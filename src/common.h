@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 /* Use 1 = debug, 0 = release */
-#define DEBUG 0
+#define DEBUG 1
 
 /* Read buffer size */
 #define RDBUF_SIZE 2048
@@ -20,10 +20,15 @@
 /* Amount of time in micorseconds we sleep in the main loop between cycles */
 #define LOOP_DELAY_US 1000
 
+extern struct gpiod_line_request *gpiod_request;  // Global request
+
 /* default network ports */
 #define DEFAULT_CTL_PORT   42000
 #define DEFAULT_AUDIO_PORT 42001
 
+/* Pinnetilkoblinger for kontrolleren */
+#define GPIO_PWK 22
+#define GPIO_STATUS_LED 23  // Fysisk pinne 16 – trygg og fri
 
 /* The following lines define different types of packets sent between
  * radio and panel.
@@ -134,6 +139,14 @@ int             transfer_data(int ifd, int ofd, struct xfr_buf *buffer);
 
 inline void     print_buffer(int from, int to, const uint8_t * buf,
                              unsigned int len);
+inline void print_buffer(int from, int to, const uint8_t * buf, unsigned int len)
+{
+    unsigned int i;
+    fprintf(stderr, "%d -> %d:", from, to);
+    for (i = 0; i < len; i++)
+        fprintf(stderr, " %02X", buf[i]);
+    fprintf(stderr, "\n");
+}
 int             set_serial_config(int fd, int speed, int parity, int blocking);
 
 /** Get current time in milliseconds. */

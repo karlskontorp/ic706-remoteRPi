@@ -6,9 +6,10 @@
  * Simplified BSD License. See license.txt for details.
  *
  */
+#include <gpiod.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include <fcntl.h>              /* O_WRONLY */
+#include <fcntl.h>               /* O_WRONLY */
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,22 +17,20 @@
 #include <sys/time.h>
 #include <termios.h>
 #include <unistd.h>
+// ************ RPI ENDRING START ************
+#include <time.h>               // Trengs for usleep i riktig implementasjon
+// ************ RPI ENDRING SLUTT ************
 
 #include "common.h"
 
+struct gpiod_line_request *gpiod_request = NULL;
+
+// Definisjon av chip-navnet
+// RPi 5 har vanligvis chip 0. RPi 4 kan ha chip 0 eller 1.
+#define GPIO_CHIP_NAME "gpiochip0" 
+// (Hvis dette feiler, bytter vi til gpiochip1)
+
 /* Print an array of chars as HEX numbers */
-inline void print_buffer(int from, int to, const uint8_t * buf,
-                         unsigned int len)
-{
-    unsigned int    i;
-
-    fprintf(stderr, "%d -> %d:", from, to);
-
-    for (i = 0; i < len; i++)
-        fprintf(stderr, " %02X", buf[i]);
-
-    fprintf(stderr, "\n");
-}
 
 /* Configure serial interface to raw mode with specified attributes */
 int set_serial_config(int fd, int speed, int parity, int blocking)
@@ -51,8 +50,8 @@ int set_serial_config(int fd, int speed, int parity, int blocking)
     tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8; // 8-bit chars
     // disable IGNBRK for mismatched speed tests; otherwise receive break
     // as \000 chars
-    tty.c_iflag &= ~IGNBRK;     // disable break processing
-    tty.c_lflag = 0;            // no signaling chars, no echo,
+    tty.c_iflag &= ~IGNBRK;       // disable break processing
+    tty.c_lflag = 0;             // no signaling chars, no echo,
     // no canonical processing
 
     /* no remapping, no delays */
@@ -86,8 +85,8 @@ int set_serial_config(int fd, int speed, int parity, int blocking)
 int create_server_socket(int port)
 {
     struct sockaddr_in serv_addr;
-    int             sock_fd = -1;
-    int             yes = 1;
+    int               sock_fd = -1;
+    int               yes = 1;
 
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd == -1)
@@ -128,9 +127,9 @@ int create_server_socket(int port)
 
 int read_data(int fd, struct xfr_buf *buffer)
 {
-    uint8_t        *buf = buffer->data;
-    int             type = PKT_TYPE_INCOMPLETE;
-    size_t          num;
+    uint8_t         *buf = buffer->data;
+    int              type = PKT_TYPE_INCOMPLETE;
+    size_t           num;
 
     /* read data */
     num = read(fd, &buf[buffer->wridx], RDBUF_SIZE - buffer->wridx);
@@ -182,9 +181,9 @@ int read_data(int fd, struct xfr_buf *buffer)
 
 int transfer_data(int ifd, int ofd, struct xfr_buf *buffer)
 {
-    uint8_t         init1_resp[] = { 0xFE, 0xF0, 0xFD };
-    uint8_t         init2_resp[] = { 0xFE, 0xF1, 0xFD };
-    int             pkt_type;
+    uint8_t           init1_resp[] = { 0xFE, 0xF0, 0xFD };
+    uint8_t           init2_resp[] = { 0xFE, 0xF1, 0xFD };
+    int               pkt_type;
 
     pkt_type = read_data(ifd, buffer);
     switch (pkt_type)
@@ -193,10 +192,10 @@ int transfer_data(int ifd, int ofd, struct xfr_buf *buffer)
         /* emulated on server side; do not forward */
         buffer->wridx = 0;
         buffer->valid_pkts++;
-
+        break;
     case PKT_TYPE_INIT1:
         /* Sent by the first unit that is powered on.
-           Expects PKT_TYPE_INIT1 + PKT_TYPE_INIT2 in response. */
+            Expects PKT_TYPE_INIT1 + PKT_TYPE_INIT2 in response. */
         buffer->write_errors += write(ifd, init1_resp, 3) != 3;
         buffer->write_errors += write(ifd, init2_resp, 3) != 3;
         buffer->wridx = 0;
@@ -205,7 +204,7 @@ int transfer_data(int ifd, int ofd, struct xfr_buf *buffer)
 
     case PKT_TYPE_INIT2:
         /* Sent by the panel when powered on and the radio is already on.
-           Expects PKT_TYPE_INIT2 in response. */
+            Expects PKT_TYPE_INIT2 in response. */
         buffer->write_errors += write(ifd, init2_resp, 3);
         buffer->wridx = 0;
         buffer->valid_pkts++;
@@ -234,7 +233,7 @@ int transfer_data(int ifd, int ofd, struct xfr_buf *buffer)
         print_buffer(ifd, ofd, buffer->data, buffer->wridx);
 #endif
         buffer->write_errors +=
-            write(ofd, buffer->data, buffer->wridx) != buffer->wridx;
+             write(ofd, buffer->data, buffer->wridx) != buffer->wridx;
 
         buffer->wridx = 0;
         buffer->valid_pkts++;
@@ -245,11 +244,9 @@ int transfer_data(int ifd, int ofd, struct xfr_buf *buffer)
 
 uint64_t time_ms(void)
 {
-    struct timeval  tval;
-
+    struct timeval tval;
     gettimeofday(&tval, NULL);
-
-    return 1e3 * tval.tv_sec + 1e-3 * tval.tv_usec;
+    return (uint64_t)tval.tv_sec * 1000 + tval.tv_usec / 1000;
 }
 
 uint64_t time_us(void)
@@ -280,121 +277,90 @@ void send_pwr_message(int fd, int poweron)
                 strerror(errno));
 }
 
+// ************ RPI ENDRING START: PWK_INIT for UTGANG (GPIO_PWK=17) ************
+// Original koden var satt opp for √• lytte p√• GPIO7 (INNGANG).
+// Din bruk er √• sende PWK som en UTGANG. Derfor erstatter vi logikken
+// med en enkel kaller til gpio_init_out(GPIO_PWK).
+#include <gpiod.h>  // Behold dette p√• linje 9
+
+// ************ RPI ENDRING START: PWK_INIT for UTGANG (GPIO_PWK=4) ************
 int pwk_init(void)
 {
-    int             fd;
-    int             wr_err = 0;
-
-
-    /*  Export GPIO7 unless it is already exported */
-    if (access("/sys/class/gpio/gpio7", F_OK) == -1)
-    {
-        /*  $ echo 7 > /sys/class/gpio/export */
-        fd = open("/sys/class/gpio/export", O_WRONLY);
-        if (fd < 0)
-            return -1;
-
-        wr_err += write(fd, "7", 1) != 1;
-        close(fd);
-    }
-
-    /*  $ echo "in" > /sys/class/gpio/gpio7/direction */
-    fd = open("/sys/class/gpio/gpio7/direction", O_WRONLY);
-    if (fd < 0)
-        return -1;
-
-    wr_err += write(fd, "in", 2) != 2;
-    close(fd);
-
-    /*  $ echo 1 > /sys/class/gpio/gpio7/active_low */
-    fd = open("/sys/class/gpio/gpio7/active_low", O_WRONLY);
-    if (fd < 0)
-        return -1;
-
-    wr_err += write(fd, "1", 1) != 1;
-    close(fd);
-
-    /*  $ echo "falling" > /sys/class/gpio/gpio7/edge  */
-    fd = open("/sys/class/gpio/gpio7/edge", O_WRONLY);
-    if (fd < 0)
-        return -1;
-
-    wr_err += write(fd, "falling", 7) != 7;
-    close(fd);
-
-    fd = open("/sys/class/gpio/gpio7/value", O_RDONLY);
-
-    if (wr_err)
-        fprintf(stderr, "Write errors during PWK_INIT: %d\n", wr_err);
-
-    return fd;
-}
-
-
-#define SYSFS_GPIO_DIR "/sys/class/gpio/"
-#define MAX_GPIO_BUF   100
-
-int gpio_init_out(unsigned int gpio)
-{
-    int             fd;
-    int             len;
-    int             wr_err = 0;
-    char            buf[MAX_GPIO_BUF];
-
-
-    /* check whether GPIO is already exported, if not, export it */
-    snprintf(buf, sizeof(buf), SYSFS_GPIO_DIR "gpio%d", gpio);
-    if (access(buf, F_OK) == -1)
-    {
-        /* export GPIO */
-        fd = open(SYSFS_GPIO_DIR "export", O_WRONLY);
-        if (fd < 0)
-            return -1;
-
-        len = snprintf(buf, sizeof(buf), "%d", gpio);
-        wr_err += write(fd, buf, len) != len;
-        close(fd);
-    }
-
-    /* set direction to "out" */
-    snprintf(buf, sizeof(buf), SYSFS_GPIO_DIR "gpio%d/direction", gpio);
-    fd = open(buf, O_WRONLY);
-    if (fd < 0)
-        return -1;
-
-    wr_err += write(fd, "out", 3) != 3;
-    close(fd);
-
-    /* intialize with a 0 */
-    if (gpio_set_value(20, 0) < 0)
-        return -1;
-
-    if (wr_err)
-    {
-        fprintf(stderr, "Write errors during GPIO init out: %d\n", wr_err);
+    // Kall gpio_init_out for  sette opp som output
+    if (gpio_init_out(GPIO_PWK) < 0) {
         return -1;
     }
-
     return 0;
 }
+// ************ RPI ENDRING SLUTT ************
 
+// ************ RPI ENDRING START: gpio_init_out ************
+// Setter opp GPIO som output (v2 API √• returnerer 0 ved suksess, -1 ved feil)
+int gpio_init_out(unsigned int gpio)
+{
+    struct gpiod_chip *chip;
+    struct gpiod_line_settings *settings;
+    struct gpiod_line_config *line_cfg;
+    struct gpiod_request_config *req_cfg;
+    unsigned int offsets[1] = { gpio };
+
+    chip = gpiod_chip_open("/dev/gpiochip0");
+    if (!chip) return -1;
+
+    settings = gpiod_line_settings_new();
+    if (!settings) { gpiod_chip_close(chip); return -1; }
+
+    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
+    gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
+
+    line_cfg = gpiod_line_config_new();
+    if (!line_cfg) {
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    if (gpiod_line_config_add_line_settings(line_cfg, offsets, 1, settings) < 0) {
+        gpiod_line_config_free(line_cfg);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    req_cfg = gpiod_request_config_new();
+    if (!req_cfg) {
+        gpiod_line_config_free(line_cfg);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+    gpiod_request_config_set_consumer(req_cfg, "ic706_gpio");
+
+    gpiod_request = gpiod_chip_request_lines(chip, req_cfg, line_cfg);
+    if (!gpiod_request) {
+        fprintf(stderr, "Kunne ikke request GPIO %u\n", gpio);
+        gpiod_request_config_free(req_cfg);
+        gpiod_line_config_free(line_cfg);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(chip);
+        return -1;
+    }
+
+    // Ikke frigj¯r her! Hold request Âpen
+    gpiod_request_config_free(req_cfg);
+    gpiod_line_config_free(line_cfg);
+    gpiod_line_settings_free(settings);
+    gpiod_chip_close(chip);  // Chip kan lukkes, request lever
+    return 0;
+}
+// ************ RPI ENDRING SLUTT ************
+
+// ************ RPI ENDRING START: gpio_set_value ************
+// Setter verdi (v2 API ñ returnerer 0 ved suksess, -1 ved feil)
 int gpio_set_value(unsigned int gpio, unsigned int value)
 {
-    int             fd;
-    int             wr_err = 0;
-    char            buf[MAX_GPIO_BUF];
-
-    snprintf(buf, sizeof(buf), SYSFS_GPIO_DIR "gpio%d/value", gpio);
-    fd = open(buf, O_WRONLY);
-    if (fd < 0)
-        return -1;
-
-    if (value == 1)
-        wr_err += write(fd, "1", 1) != 1;
-    else
-        wr_err += write(fd, "0", 1) != 1;
-
-    close(fd);
-
-    return -wr_err;
-}
+    if (!gpiod_request) return -1;
+    return gpiod_line_request_set_value(gpiod_request, gpio,
+           value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE);
+}// ************ RPI ENDRING SLUTT ************
+// ************ RPI ENDRING SLUTT ************

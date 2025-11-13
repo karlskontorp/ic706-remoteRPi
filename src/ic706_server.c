@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <termios.h>
 #include <unistd.h>
+#include <gpiod.h>
 
 #include "common.h"
 
@@ -34,7 +35,6 @@ static int      keep_running = 1;       /* set to 0 to exit infinite loop */
 uint32_t        client_addr = 0;
 
 /* GPIO pin used to emulate PWK signal */
-#define  GPIO_PWK 20
 
 void signal_handler(int signo)
 {
@@ -55,7 +55,7 @@ static void help(void)
         "\n Possible options are:\n"
         "\n"
         "  -p    Network port number (default is 42000).\n"
-        "  -u    Uart port (default is /dev/ttyO1).\n"
+        "  -u    Uart port (default is /dev/serial0).\n"
         "  -h    This help message.\n\n";
 
     fprintf(stderr, "%s", help_string);
@@ -133,7 +133,7 @@ int main(int argc, char **argv)
 
     parse_options(argc, argv);
     if (uart == NULL)
-        uart = strdup("/dev/ttyO1");
+        uart = strdup("/dev/serial0");
 
     fprintf(stderr, "Using network port %d\n", port);
     fprintf(stderr, "Using UART port %s\n", uart);
@@ -342,6 +342,12 @@ int main(int argc, char **argv)
     close(sock_fd);
     if (uart != NULL)
         free(uart);
+// I både server og klient – før return
+    if (gpiod_request) {
+        gpiod_line_request_release(gpiod_request);
+        gpiod_request = NULL;
+       }
+
 
     fprintf(stderr, "  Valid packets uart / net: %" PRIu64 " / %" PRIu64 "\n",
             uart_buf.valid_pkts, net_buf.valid_pkts);
@@ -349,6 +355,5 @@ int main(int argc, char **argv)
             uart_buf.invalid_pkts, net_buf.invalid_pkts);
     fprintf(stderr, "   Write errors uart / net: %" PRIu32 " / %" PRIu32 "\n",
             uart_buf.write_errors, net_buf.write_errors);
-
     exit(exit_code);
 }
