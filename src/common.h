@@ -28,7 +28,6 @@ extern struct gpiod_line_request *gpiod_request;  // Global request
 
 /* Pinnetilkoblinger for kontrolleren */
 #define GPIO_PWK 22
-#define GPIO_STATUS_LED 23  // Fysisk pinne 16 – trygg og fri
 
 /* The following lines define different types of packets sent between
  * radio and panel.

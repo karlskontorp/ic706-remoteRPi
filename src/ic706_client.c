@@ -27,7 +27,7 @@
 /* GPIO pin controlling panel power */
 #define  PANEL_PWR_PIN 27
 
-// ic706_client.c – legg til øverst (etter includes)
+// ic706_client.c ï¿½ legg til ï¿½verst (etter includes)
 //static int connection_ok = 0;  // 1 = koblet, 0 = frakoblet
 
 static char    *uart = NULL;    /* UART port */
@@ -182,12 +182,6 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    /*  LED for å vise status */
-    if (gpio_init_out(GPIO_STATUS_LED) == -1) {
-        fprintf(stderr, "Error configuring STATUS LED GPIO: %d: %s\n", errno, strerror(errno));
-        goto cleanup;
-    }
-    gpio_set_value(GPIO_STATUS_LED, 0);  // Start slukket
 
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
@@ -239,7 +233,6 @@ int main(int argc, char **argv)
 
         while (keep_running && connected)
         {
-            gpio_set_value(GPIO_STATUS_LED, 1);  // Forbindelse OK
             /* FIXME: don't need to set this every time? */
             FD_SET(net_fd, &readfds);
             FD_SET(uart_fd, &readfds);
@@ -300,7 +293,6 @@ int main(int argc, char **argv)
     }
 
     fprintf(stderr, "Shutting down...\n");
-    gpio_set_value(GPIO_STATUS_LED, 0);  // LED AV
     exit_code = EXIT_SUCCESS;
 
   cleanup:
@@ -318,7 +310,7 @@ int main(int argc, char **argv)
             uart_buf.invalid_pkts, net_buf.invalid_pkts);
     fprintf(stderr, "   Write errors uart / net: %" PRIu32 " / %" PRIu32 "\n",
             uart_buf.write_errors, net_buf.write_errors);
-    // I både server og klient – før return
+    // I bï¿½de server og klient ï¿½ fï¿½r return
 if (gpiod_request) {
     gpiod_line_request_release(gpiod_request);
     gpiod_request = NULL;
