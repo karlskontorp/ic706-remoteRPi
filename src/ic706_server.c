@@ -35,6 +35,7 @@ static int      keep_running = 1;       /* set to 0 to exit infinite loop */
 uint32_t        client_addr = 0;
 
 /* GPIO pin used to emulate PWK signal */
+#define  PANEL_PWR_PIN 27
 
 void signal_handler(int signo)
 {
