@@ -177,7 +177,7 @@ int main(int argc, char **argv)
     /* Control panel power */
     if (gpio_init_out(PANEL_PWR_PIN) == -1)
     {
-        fprintf(stderr, "Error configuring panel GPIO: %d: %s\n", errno,
+        fprintf(stderr, "Error configuring panel GPIO as output: %d: %s\n", errno,
                 strerror(errno));
         goto cleanup;
     }

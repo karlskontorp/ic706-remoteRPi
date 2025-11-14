@@ -158,7 +158,7 @@ int main(int argc, char **argv)
     /* PWK signal to radio */
     if (gpio_init_out(GPIO_PWK) == -1)
     {
-        fprintf(stderr, "Error configuring PWK GPIO: %d: %s\n", errno,
+        fprintf(stderr, "Error configuring PWK GPIO as output: %d: %s\n", errno,
                 strerror(errno));
         goto cleanup;
     }
@@ -342,7 +342,7 @@ int main(int argc, char **argv)
     close(sock_fd);
     if (uart != NULL)
         free(uart);
-// I både server og klient – før return
+// I bï¿½de server og klient ï¿½ fï¿½r return
     if (gpiod_request) {
         gpiod_line_request_release(gpiod_request);
         gpiod_request = NULL;
